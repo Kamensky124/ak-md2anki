@@ -164,7 +164,7 @@ canonical artifact; the sink is swappable.
 }
 ```
 
-- **`id`** is deterministic (`<type>:<file-stem>:<slug>`). Drives AnkiConnect
+- **`id`** is deterministic (`<type>__<source-stem>__<hash>`). Drives AnkiConnect
   upsert (stored in note's first field / a `SourceId` field) and genanki `guid`.
 - **`sourceHash`** per card enables incremental rebuilds + cache validity.
 

@@ -56,7 +56,11 @@ def cmd_build(args: argparse.Namespace) -> None:
 
     if not args.no_enrich:
         logger.info("Enriching %d cards via OpenRouter…", len(all_cards))
-        all_cards = enrich(all_cards)
+        all_cards = enrich(
+            all_cards,
+            cache_path=args.cache_file,
+            cache_enabled=not args.no_cache,
+        )
 
     out_path = args.out or "cards.json"
     save(out_path, all_cards)
@@ -106,11 +110,13 @@ def cmd_export(args: argparse.Namespace) -> None:
             print(f"No cards for deck '{args.deck}'.", file=sys.stderr)
             sys.exit(1)
 
-    export_apkg(cards, args.apkg)
-    print(f"✅ exported {len(cards)} cards → {args.apkg}")
+    apkg_path = args.apkg if args.apkg.endswith(".apkg") else f"{args.apkg}.apkg"
+    export_apkg(cards, apkg_path)
+    print(f"✅ exported {len(cards)} cards → {apkg_path}")
 
 
 def cmd_list(args: argparse.Namespace) -> None:
+    _setup_logging(args.verbose)
     in_path = args.in_ or "cards.json"
     cards = load(in_path)
     if not cards:
@@ -138,6 +144,8 @@ def main(argv: list[str] | None = None) -> None:
     b.add_argument("path", help="Markdown file or directory (recursive .md)")
     b.add_argument("--no-enrich", action="store_true", help="Skip AI enrichment")
     b.add_argument("--out", default="cards.json", help="Output path (default: cards.json)")
+    b.add_argument("--cache-file", help="Path to enrichment cache JSON file")
+    b.add_argument("--no-cache", action="store_true", help="Disable reading/writing enrichment cache")
     b.set_defaults(func=cmd_build)
 
     s = sub.add_parser("sync", help="Upsert cards into Anki via AnkiConnect")
