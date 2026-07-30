@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 from ak_md2anki.enrich import enrich
-from ak_md2anki.extract import extract_text
+from ak_md2anki.extract import extract_prose, extract_text
 from ak_md2anki.models import Card
 from ak_md2anki.sink import export_apkg, sync_cards
 from ak_md2anki.store import load, save
@@ -71,8 +71,11 @@ def cmd_build(args: argparse.Namespace) -> None:
 
         current_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
 
+        use_prose = getattr(args, "prose", False)
+        is_force = getattr(args, "force", False)
+
         if (
-            not args.force
+            not is_force
             and abs_path in existing_by_source
             and existing_by_source[abs_path][0] == current_hash
         ):
@@ -85,6 +88,14 @@ def cmd_build(args: argparse.Namespace) -> None:
         logger.info("Parsing %s", rel)
         try:
             parsed = extract_text(content, source=str(fp))
+            if not parsed and use_prose:
+                logger.info("  No structured cards found. Running prose extractor…")
+                parsed = extract_prose(content, source=str(fp))
+            elif parsed and use_prose:
+                logger.info("  Running prose extractor for unstructured content…")
+                prose_cards = extract_prose(content, source=str(fp))
+                parsed.extend(prose_cards)
+
             all_cards.extend(parsed)
             logger.info("  → %d cards", len(parsed))
         except Exception:
@@ -187,7 +198,17 @@ def main(argv: list[str] | None = None) -> None:
 
     b = sub.add_parser("build", help="Build cards.json from Markdown")
     b.add_argument("path", help="Markdown file or directory (recursive .md)")
-    b.add_argument("--force", "-f", action="store_true", help="Force full rebuild ignoring cached source hashes")
+    b.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Force full rebuild ignoring cached source hashes",
+    )
+    b.add_argument(
+        "--prose",
+        action="store_true",
+        help="Enable LLM prose extractor for unstructured Markdown notes",
+    )
     b.add_argument("--no-enrich", action="store_true", help="Skip AI enrichment")
     b.add_argument("--out", default="cards.json", help="Output path (default: cards.json)")
     b.add_argument("--cache-file", help="Path to enrichment cache JSON file")
