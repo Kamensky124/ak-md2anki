@@ -8,6 +8,15 @@ from typing import Any
 import requests
 
 from ak_md2anki import config
+from ak_md2anki.card_templates import (
+    FIELD_ORDER,
+    QA_CSS,
+    QA_MODEL_NAME,
+    QA_TEMPLATE,
+    VOCAB_CSS,
+    VOCAB_MODEL_NAME,
+    VOCAB_TEMPLATE,
+)
 from ak_md2anki.models import Card, CardType
 
 logger = logging.getLogger(__name__)
@@ -42,72 +51,20 @@ def _multi(actions: list[dict]) -> list[Any]:
 # ── deck & model setup ──────────────────────────────────────────────────────
 
 _VOCAB_MODEL_DEF = {
-    "modelName": "Business Vocab",
-    "inOrderFields": [
-        {"name": "Term"},
-        {"name": "Meaning"},
-        {"name": "Why"},
-        {"name": "Example"},
-        {"name": "AIExamples"},
-        {"name": "SourceId"},
-    ],
-    "cardTemplates": [
-        {
-            "Name": "Recall meaning",
-            "Front": "{{Term}}",
-            "Back": (
-                "{{FrontSide}}<hr id=answer>"
-                '<div class="meaning">{{Meaning}}</div>'
-                "{{#Why}}<p class='why'>💡 {{Why}}</p>{{/Why}}"
-                "{{#Example}}<p class='example'>🗣 <i>{{Example}}</i></p>{{/Example}}"
-                "{{#AIExamples}}<p class='ai'>🤖 {{AIExamples}}</p>{{/AIExamples}}"
-            ),
-        },
-    ],
-    "css": (
-        ".meaning { font-size: 1.2em; margin-top: 0.5em; }"
-        ".why { color: #555; font-size: 0.9em; margin-top: 0.3em; }"
-        ".example, .ai { font-size: 0.85em; color: #333; margin-top: 0.2em; }"
-    ),
+    "modelName": VOCAB_MODEL_NAME,
+    "inOrderFields": [{"name": f} for f in FIELD_ORDER[CardType.VOCAB]],
+    "cardTemplates": [VOCAB_TEMPLATE],
+    "css": VOCAB_CSS,
 }
 
 _QA_MODEL_DEF = {
-    "modelName": "Client Q&A",
-    "inOrderFields": [
-        {"name": "Section"},
-        {"name": "Question"},
-        {"name": "Answer"},
-        {"name": "Variants"},
-        {"name": "SourceId"},
-    ],
-    "cardTemplates": [
-        {
-            "Name": "Q&A",
-            "Front": (
-                "{{#Section}}<p class='section'>{{Section}}</p>{{/Section}}"
-                "<div class='question'>{{Question}}</div>"
-            ),
-            "Back": (
-                "{{FrontSide}}<hr id=answer>"
-                '<div class="answer">{{Answer}}</div>'
-                "{{#Variants}}<p class='variants'>🔄 also: {{Variants}}</p>{{/Variants}}"
-            ),
-        },
-    ],
-    "css": (
-        ".section { color: #888; font-size: 0.75em; margin-bottom: 0.2em; }"
-        ".question { font-size: 1.1em; font-weight: bold; }"
-        ".answer { margin-top: 0.5em; }"
-        ".variants { font-size: 0.85em; color: #555; margin-top: 0.5em; }"
-    ),
+    "modelName": QA_MODEL_NAME,
+    "inOrderFields": [{"name": f} for f in FIELD_ORDER[CardType.QA]],
+    "cardTemplates": [QA_TEMPLATE],
+    "css": QA_CSS,
 }
 
 _MODEL_DEFS = {CardType.VOCAB: _VOCAB_MODEL_DEF, CardType.QA: _QA_MODEL_DEF}
-
-_FIELD_ORDER: dict[CardType, list[str]] = {
-    CardType.VOCAB: ["Term", "Meaning", "Why", "Example", "AIExamples", "SourceId"],
-    CardType.QA: ["Section", "Question", "Answer", "Variants", "SourceId"],
-}
 
 
 def _ensure_model(model_def: dict) -> None:
@@ -131,6 +88,9 @@ def sync_cards(cards: list[Card], dry_run: bool = False) -> dict[str, int]:
     Returns counts: ``{"added": N, "updated": N, "skipped": N}``.
     ``dry_run`` does a find-only pass — log what would change without writing.
     """
+    if not cards:
+        return {"added": 0, "updated": 0, "skipped": 0}
+
     # Ensure decks + models exist.
     used_decks: set[str] = {c.deck for c in cards}
     used_types: set[CardType] = {c.type for c in cards}
@@ -139,14 +99,16 @@ def sync_cards(cards: list[Card], dry_run: bool = False) -> dict[str, int]:
     for t in used_types:
         _ensure_model(_MODEL_DEFS[t])
 
-    # Build a single combined findNotes query (OR of all SourceIds).
-    # Note: Anki field search needs the field name followed by a colon and the
-    # value. Special characters inside the value are fine since we use __
-    # separators and alphanumeric hash tails.
+    # Batched findNotes to avoid oversized search query strings.
     ids_list = [c.id for c in cards]
-    # Anki search OR uses the syntax: (q1 OR q2 OR ...)
-    query = "(" + " OR ".join(f'"SourceId:{uid}"' for uid in ids_list) + ")"
-    found_ids = _invoke("findNotes", query=query)
+    found_ids: list[int] = []
+    chunk_size = 100
+    for i in range(0, len(ids_list), chunk_size):
+        chunk = ids_list[i : i + chunk_size]
+        query = "(" + " OR ".join(f'"SourceId:{uid}"' for uid in chunk) + ")"
+        res = _invoke("findNotes", query=query)
+        if res:
+            found_ids.extend(res)
 
     # Map SourceId → noteId.
     id_to_note: dict[str, int] = {}
@@ -167,7 +129,7 @@ def sync_cards(cards: list[Card], dry_run: bool = False) -> dict[str, int]:
         if note_id is not None:
             # Prepare updated fields. SourceId stays unchanged.
             fields = {}
-            order = _FIELD_ORDER[c.type]
+            order = FIELD_ORDER[c.type]
             for key in order:
                 fields[key] = c.fields.get(key, "")
             fields["SourceId"] = c.id
@@ -183,7 +145,7 @@ def sync_cards(cards: list[Card], dry_run: bool = False) -> dict[str, int]:
                 added += 1
                 continue
             fields = {}
-            order = _FIELD_ORDER[c.type]
+            order = FIELD_ORDER[c.type]
             for key in order:
                 fields[key] = c.fields.get(key, "")
             fields["SourceId"] = c.id

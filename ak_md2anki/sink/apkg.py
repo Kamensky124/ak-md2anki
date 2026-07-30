@@ -12,6 +12,15 @@ from pathlib import Path
 
 import genanki
 
+from ak_md2anki.card_templates import (
+    FIELD_ORDER,
+    QA_CSS,
+    QA_MODEL_NAME,
+    QA_TEMPLATE,
+    VOCAB_CSS,
+    VOCAB_MODEL_NAME,
+    VOCAB_TEMPLATE,
+)
 from ak_md2anki.models import Card, CardType
 
 # ----------- stable identifiers -----------
@@ -26,73 +35,35 @@ def _deck_id(deck_name: str) -> int:
 
 _VOCAB_MODEL = genanki.Model(
     VOCAB_MODEL_ID,
-    "Business Vocab",
-    fields=[
-        {"name": "Term"},
-        {"name": "Meaning"},
-        {"name": "Why"},
-        {"name": "Example"},
-        {"name": "AIExamples"},
-        {"name": "SourceId"},
-    ],
+    VOCAB_MODEL_NAME,
+    fields=[{"name": f} for f in FIELD_ORDER[CardType.VOCAB]],
     templates=[
         {
-            "name": "Recall meaning",
-            "qfmt": "{{Term}}",
-            "afmt": (
-                "{{FrontSide}}<hr id=answer>"
-                '<div class="meaning">{{Meaning}}</div>'
-                "{{#Why}}<p class='why'>💡 {{Why}}</p>{{/Why}}"
-                "{{#Example}}<p class='example'>🗣 <i>{{Example}}</i></p>{{/Example}}"
-                "{{#AIExamples}}<p class='ai'>🤖 {{AIExamples}}</p>{{/AIExamples}}"
-            ),
-        },
+            "name": VOCAB_TEMPLATE["Name"],
+            "qfmt": VOCAB_TEMPLATE["Front"],
+            "afmt": VOCAB_TEMPLATE["Back"],
+        }
     ],
-    css="""\
-.meaning { font-size: 1.2em; margin-top: 0.5em; }
-.why { color: #555; font-size: 0.9em; margin-top: 0.3em; }
-.example, .ai { font-size: 0.85em; color: #333; margin-top: 0.2em; }""",
+    css=VOCAB_CSS,
 )
 
 _QA_MODEL = genanki.Model(
     QA_MODEL_ID,
-    "Client Q&A",
-    fields=[
-        {"name": "Section"},
-        {"name": "Question"},
-        {"name": "Answer"},
-        {"name": "Variants"},
-        {"name": "SourceId"},
-    ],
+    QA_MODEL_NAME,
+    fields=[{"name": f} for f in FIELD_ORDER[CardType.QA]],
     templates=[
         {
-            "name": "Q&A",
-            "qfmt": (
-                "{{#Section}}<p class='section'>{{Section}}</p>{{/Section}}"
-                "<div class='question'>{{Question}}</div>"
-            ),
-            "afmt": (
-                "{{FrontSide}}<hr id=answer>"
-                '<div class="answer">{{Answer}}</div>'
-                "{{#Variants}}<p class='variants'>🔄 also: {{Variants}}</p>{{/Variants}}"
-            ),
-        },
+            "name": QA_TEMPLATE["Name"],
+            "qfmt": QA_TEMPLATE["Front"],
+            "afmt": QA_TEMPLATE["Back"],
+        }
     ],
-    css="""\
-.section { color: #888; font-size: 0.75em; margin-bottom: 0.2em; }
-.question { font-size: 1.1em; font-weight: bold; }
-.answer { margin-top: 0.5em; }
-.variants { font-size: 0.85em; color: #555; margin-top: 0.5em; }""",
+    css=QA_CSS,
 )
 
 _MODEL_MAP = {
     CardType.VOCAB: _VOCAB_MODEL,
     CardType.QA: _QA_MODEL,
-}
-
-_FIELD_ORDER: dict[CardType, list[str]] = {
-    CardType.VOCAB: ["Term", "Meaning", "Why", "Example", "AIExamples", "SourceId"],
-    CardType.QA: ["Section", "Question", "Answer", "Variants", "SourceId"],
 }
 
 
@@ -107,7 +78,7 @@ def export_apkg(cards: list[Card], out_path: str | Path) -> None:
         if dname not in decks:
             decks[dname] = genanki.Deck(_deck_id(dname), dname)
         model = _MODEL_MAP[c.type]
-        order = _FIELD_ORDER[c.type]
+        order = FIELD_ORDER[c.type]
         fields = [c.fields.get(k, "") for k in order]
         # Write the stable id into the SourceId field for AnkiConnect search.
         fields[-1] = c.id
