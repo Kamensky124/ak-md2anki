@@ -273,22 +273,6 @@ def extract_text(text: str, *, source: str = "") -> list[Card]:
             i = j
             continue
 
-        if _Q_HEADING.match(line):
-            question, answer_md, j = _read_qa(lines, i, section=current_section)
-            card = _parse_qa(
-                question,
-                answer_md,
-                source_stem=source_stem,
-                source=source,
-                source_hash=source_hash,
-                section=current_section,
-                base_tags=base_tags,
-            )
-            if card is not None:
-                cards.append(card)
-            i = j
-            continue
-
         i += 1
 
     return cards

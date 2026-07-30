@@ -19,8 +19,8 @@ _ASCII_LABEL = re.compile(r"^[A-Za-z0-9 &,\-/+]+$")
 
 
 def slugify(text: str) -> str:
-    """Lowercase, ASCII-alnum runs joined by ``-``. Non-ASCII is dropped."""
-    cleaned = re.sub(r"[^A-Za-z0-9]+", "-", text.strip().lower()).strip("-")
+    """Lowercase alnum runs (including Unicode letters) joined by ``-``."""
+    cleaned = re.sub(r"[^\w]+", "-", text.strip().lower()).replace("_", "-").strip("-")
     return cleaned or "section"
 
 

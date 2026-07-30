@@ -16,8 +16,11 @@ class TestSlugify:
     def test_special_chars(self):
         assert slugify("foo & bar, baz") == "foo-bar-baz"
 
-    def test_non_ascii_dropped(self):
-        assert slugify("привет") == "" or slugify("привет") == "section"
+    def test_unicode(self):
+        assert slugify("привет") == "привет"
+
+    def test_empty_fallback(self):
+        assert slugify("!!!") == "section"
 
 
 class TestStripEmphasis:
