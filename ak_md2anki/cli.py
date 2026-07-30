@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import logging
 import sys
 from pathlib import Path
 
 from ak_md2anki.enrich import enrich
-from ak_md2anki.extract import extract_file
+from ak_md2anki.extract import extract_text
 from ak_md2anki.models import Card
 from ak_md2anki.sink import export_apkg, sync_cards
 from ak_md2anki.store import load, save
@@ -42,12 +43,48 @@ def cmd_build(args: argparse.Namespace) -> None:
         print("No .md files found.", file=sys.stderr)
         sys.exit(1)
 
+    out_path = args.out or "cards.json"
+    existing_cards = load(out_path) if not args.force else []
+
+    existing_by_source: dict[str, tuple[str, list[Card]]] = {}
+    for c in existing_cards:
+        if c.source:
+            try:
+                norm = str(Path(c.source).resolve())
+                if norm not in existing_by_source:
+                    existing_by_source[norm] = (c.source_hash, [])
+                existing_by_source[norm][1].append(c)
+            except Exception:
+                pass
+
     all_cards: list[Card] = []
+    reused_count = 0
+
     for fp in files:
         rel = fp.relative_to(target) if target.is_dir() else fp.name
+        abs_path = str(fp.resolve())
+        try:
+            content = fp.read_text(encoding="utf-8")
+        except Exception:
+            logger.error("Failed to read %s", fp, exc_info=True)
+            sys.exit(1)
+
+        current_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+        if (
+            not args.force
+            and abs_path in existing_by_source
+            and existing_by_source[abs_path][0] == current_hash
+        ):
+            cached_cards = existing_by_source[abs_path][1]
+            logger.info("Skipping unchanged %s (%d cards reused)", rel, len(cached_cards))
+            all_cards.extend(cached_cards)
+            reused_count += len(cached_cards)
+            continue
+
         logger.info("Parsing %s", rel)
         try:
-            parsed = extract_file(fp)
+            parsed = extract_text(content, source=str(fp))
             all_cards.extend(parsed)
             logger.info("  → %d cards", len(parsed))
         except Exception:
@@ -55,19 +92,25 @@ def cmd_build(args: argparse.Namespace) -> None:
             sys.exit(1)
 
     if not args.no_enrich:
-        logger.info("Enriching %d cards via OpenRouter…", len(all_cards))
-        all_cards = enrich(
-            all_cards,
-            cache_path=args.cache_file,
-            cache_enabled=not args.no_cache,
-        )
+        unenriched_count = sum(1 for c in all_cards if not c.enriched)
+        if unenriched_count > 0:
+            logger.info("Enriching %d cards via OpenRouter…", unenriched_count)
+            all_cards = enrich(
+                all_cards,
+                cache_path=args.cache_file,
+                cache_enabled=not args.no_cache,
+            )
+        else:
+            logger.info("All cards are already enriched — skipping OpenRouter API calls")
 
-    out_path = args.out or "cards.json"
     save(out_path, all_cards)
     n_vocab = sum(1 for c in all_cards if c.type.value == "vocab")
     n_qa = sum(1 for c in all_cards if c.type.value == "qa")
     n_enriched = sum(1 for c in all_cards if c.enriched)
-    print(f"✅ {len(all_cards)} cards ({n_vocab} vocab, {n_qa} qa, {n_enriched} enriched)")
+    reused_msg = f", {reused_count} reused" if reused_count > 0 else ""
+    print(
+        f"✅ {len(all_cards)} cards ({n_vocab} vocab, {n_qa} qa, {n_enriched} enriched{reused_msg})"
+    )
     print(f"   written to {out_path}")
 
 
@@ -128,7 +171,9 @@ def cmd_list(args: argparse.Namespace) -> None:
 
     for c in sorted(cards, key=lambda x: x.id):
         e = "✨" if c.enriched else "  "
-        print(f"  [{c.type.value}]{e} {c.id:50s}  {c.fields.get('Term','') or c.fields.get('Question','')}")
+        print(
+            f"  [{c.type.value}]{e} {c.id:50s}  {c.fields.get('Term','') or c.fields.get('Question','')}"
+        )
     print(f"\n{len(cards)} cards")
 
 
@@ -142,10 +187,13 @@ def main(argv: list[str] | None = None) -> None:
 
     b = sub.add_parser("build", help="Build cards.json from Markdown")
     b.add_argument("path", help="Markdown file or directory (recursive .md)")
+    b.add_argument("--force", "-f", action="store_true", help="Force full rebuild ignoring cached source hashes")
     b.add_argument("--no-enrich", action="store_true", help="Skip AI enrichment")
     b.add_argument("--out", default="cards.json", help="Output path (default: cards.json)")
     b.add_argument("--cache-file", help="Path to enrichment cache JSON file")
-    b.add_argument("--no-cache", action="store_true", help="Disable reading/writing enrichment cache")
+    b.add_argument(
+        "--no-cache", action="store_true", help="Disable reading/writing enrichment cache"
+    )
     b.set_defaults(func=cmd_build)
 
     s = sub.add_parser("sync", help="Upsert cards into Anki via AnkiConnect")
