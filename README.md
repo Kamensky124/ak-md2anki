@@ -9,6 +9,10 @@ Two output sinks:
 - **AnkiConnect** — live upsert into a running Anki desktop (no import dialog).
 - **`.apkg`** — a portable file you import anywhere (Anki need not be running).
 
+👉 **[Full User Guide (USER_GUIDE.md)](USER_GUIDE.md)** — setup from zero, every
+CLI command with examples, AI enrichment setup, AnkiConnect step-by-step,
+troubleshooting, and SRS tips.
+
 > Deterministic parsing first: where your Markdown already has structure, it is
 > parsed directly and for free. The LLM only *adds* example sentences and answer
 > paraphrases — it never re-derives or invents your content.

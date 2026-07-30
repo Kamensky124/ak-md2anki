@@ -36,7 +36,7 @@ dev = [
 ak-md2anki = "ak_md2anki.cli:main"
 
 [project.urls]
-"Homepage" = "https://github.com/andrey-kamensky/ak-md2anki"
+"Homepage" = "https://github.com/Kamensky124/ak-md2anki"
 
 [tool.setuptools.packages.find]
 include = ["ak_md2anki*"]
