@@ -93,3 +93,8 @@ ak-md2anki build tests/fixtures/sample_vocab.md --no-enrich
 - `PLAN.md` — full design, tool-landscape evaluation, sequencing.
 - `AGENTS.md` — this file (repo rules).
 - `README.md` — public-facing usage.
+
+
+## Shared Skills
+- Hub: `~/.agents/` — tiers & catalog: `~/.agents/INDEX.md`. Active tiers here: **general + code**.
+- Security: `~/.agents/security/SECURITY.md` for auth/secret/DB/webhook work.
