@@ -87,14 +87,14 @@ def cmd_build(args: argparse.Namespace) -> None:
 
         logger.info("Parsing %s", rel)
         try:
+            # Prose extractor only runs when no structured cards were found:
+            # both extractors share the same id scheme, so running both on one
+            # file would emit duplicate ids (violating the one-card-per-id
+            # invariant). Prose is for files lacking tables / Q: blocks.
             parsed = extract_text(content, source=str(fp))
             if not parsed and use_prose:
                 logger.info("  No structured cards found. Running prose extractor…")
                 parsed = extract_prose(content, source=str(fp))
-            elif parsed and use_prose:
-                logger.info("  Running prose extractor for unstructured content…")
-                prose_cards = extract_prose(content, source=str(fp))
-                parsed.extend(prose_cards)
 
             all_cards.extend(parsed)
             logger.info("  → %d cards", len(parsed))

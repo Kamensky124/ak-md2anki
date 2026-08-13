@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import time
 from pathlib import Path
 
 from ak_md2anki import config
@@ -95,11 +96,17 @@ def extract_prose(text: str, *, source: str = "") -> list[Card]:
     chunks = _chunk_text(text)
     cards: list[Card] = []
 
+    calls_made = 0
     for section, chunk in chunks:
         # Check skip hint
         if "<!-- anki:skip -->" in chunk:
             logger.info("Skipping section '%s' due to <!-- anki:skip --> hint", section)
             continue
+
+        # Respect the OpenRouter RPM cap between API-calling chunks, mirroring
+        # enrich(). Skipped chunks make no call and don't count.
+        if calls_made > 0:
+            time.sleep(60 / config.RPM_LIMIT)
 
         hint_prompt = ""
         if "<!-- anki:qa -->" in chunk:
@@ -117,6 +124,7 @@ def extract_prose(text: str, *, source: str = "") -> list[Card]:
         if parsed is None:
             resp = _call_openrouter(messages, config.FALLBACK_MODEL)
             parsed = _extract_json(resp)
+        calls_made += 1
 
         if not parsed or not isinstance(parsed, list):
             continue

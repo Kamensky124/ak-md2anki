@@ -57,3 +57,23 @@ def test_prose_extractor_mocked(monkeypatch):
     assert vocab_card.fields["Meaning"] == "Application Programming Interface"
     assert qa_card.fields["Question"] == "What is REST?"
     assert qa_card.fields["Answer"] == "<p>Representational State Transfer</p>"
+
+
+def test_prose_respects_rpm_between_chunks(monkeypatch):
+    import ak_md2anki.extract.prose as mod
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-fake")
+    sleeps: list[float] = []
+    monkeypatch.setattr(mod.time, "sleep", lambda s: sleeps.append(s))
+
+    def mock_call(messages, model):
+        return {"choices": [{"message": {"content": "[]"}}]}
+
+    monkeypatch.setattr(mod, "_call_openrouter", mock_call)
+
+    text = "## A\nprose\n\n## B\nprose\n\n## C\nprose\n"
+    cards = extract_prose(text, source="multi.md")
+
+    assert cards == []
+    # 3 chunks → 2 inter-chunk sleeps (none after the last).
+    assert len(sleeps) == 2

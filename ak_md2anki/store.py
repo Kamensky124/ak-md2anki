@@ -22,10 +22,22 @@ def load(path: str | Path) -> list[Card]:
 
 
 def save(path: str | Path, cards: list[Card]) -> None:
-    """Write cards to JSON, sorted by id for stable diffs."""
+    """Write cards to JSON, sorted by id for stable diffs.
+
+    Duplicate ids are collapsed (first occurrence wins) so the persistence
+    layer enforces the "one card per id" invariant even if an extractor or a
+    same-stem file collision emits duplicates.
+    """
+    seen: set[str] = set()
+    unique: list[Card] = []
+    for c in cards:
+        if c.id in seen:
+            continue
+        seen.add(c.id)
+        unique.append(c)
     payload = {
         "version": 1,
-        "cards": [c.to_dict() for c in sorted(cards, key=lambda c: c.id)],
+        "cards": [c.to_dict() for c in sorted(unique, key=lambda c: c.id)],
     }
     Path(path).write_text(
         json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"

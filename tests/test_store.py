@@ -50,3 +50,15 @@ class TestStore:
             loaded = load(path)
             ids = [c.id for c in loaded]
             assert ids == sorted(ids)
+
+    def test_save_dedupes_by_id(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "cards.json"
+            first = _make_card("dup")
+            first.fields["Term"] = "first"
+            second = _make_card("dup")
+            second.fields["Term"] = "second"
+            save(path, [first, second])
+            loaded = load(path)
+            assert len(loaded) == 1
+            assert loaded[0].fields["Term"] == "first"
