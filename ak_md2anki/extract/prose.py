@@ -17,7 +17,13 @@ from pathlib import Path
 
 from ak_md2anki import config
 from ak_md2anki.enrich import _call_openrouter, _extract_json
-from ak_md2anki.mdutil import heading_tag, md_to_html_block, md_to_html_inline, slugify
+from ak_md2anki.mdutil import (
+    heading_tag,
+    md_to_html_block,
+    md_to_html_inline,
+    sanitize_for_html,
+    slugify,
+)
 from ak_md2anki.models import Card, CardType
 
 logger = logging.getLogger(__name__)
@@ -151,10 +157,12 @@ def extract_prose(text: str, *, source: str = "") -> list[Card]:
                         deck=config.VOCAB_DECK,
                         type=CardType.VOCAB,
                         fields={
-                            "Term": md_to_html_inline(term),
-                            "Meaning": md_to_html_inline(meaning),
-                            "Why": md_to_html_inline(why) if why else "",
-                            "Example": md_to_html_inline(example) if example else "",
+                            "Term": md_to_html_inline(sanitize_for_html(term)),
+                            "Meaning": md_to_html_inline(sanitize_for_html(meaning)),
+                            "Why": md_to_html_inline(sanitize_for_html(why)) if why else "",
+                            "Example": md_to_html_inline(sanitize_for_html(example))
+                            if example
+                            else "",
                             "AIExamples": "",
                             "SourceId": "",
                         },
@@ -181,8 +189,8 @@ def extract_prose(text: str, *, source: str = "") -> list[Card]:
                         type=CardType.QA,
                         fields={
                             "Section": sec,
-                            "Question": md_to_html_inline(question),
-                            "Answer": md_to_html_block(answer),
+                            "Question": md_to_html_inline(sanitize_for_html(question)),
+                            "Answer": md_to_html_block(sanitize_for_html(answer)),
                             "Variants": "",
                             "SourceId": "",
                         },

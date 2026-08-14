@@ -146,3 +146,27 @@ class TestEnrichWithMock:
         res = _call_openrouter([{"role": "user", "content": "hi"}], "test-model", retries=1)
         assert res is None
         assert attempts[0] == 2
+
+    def test_enrichment_escapes_html_in_examples(self, monkeypatch, tmp_path):
+        """Untrusted LLM output must be HTML-escaped before reaching Anki fields."""
+        import ak_md2anki.enrich as mod
+
+        def fake_call(messages, model):
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '[{"term":"retainer","examples":['
+                            '"<script>alert(1)</script>","ok"]}]'
+                        }
+                    }
+                ]
+            }
+
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-fake")
+        monkeypatch.setattr(mod, "_call_openrouter", fake_call)
+        cards = [_make_vocab("v1", "retainer")]
+        result = enrich(cards, cache_path=tmp_path / "cache.json")
+        field = result[0].fields["AIExamples"]
+        assert "<script>" not in field
+        assert "&lt;script&gt;" in field

@@ -7,6 +7,7 @@ that ``markdown.markdown`` emits.
 
 from __future__ import annotations
 
+import html as _html
 import re
 
 import markdown as _md
@@ -42,6 +43,14 @@ def md_to_html_inline(text: str) -> str:
     html = md_to_html_block(text)
     m = _INNER_P.match(html)
     return m.group(1) if m else html
+
+
+def sanitize_for_html(text: str) -> str:
+    """Escape untrusted (LLM-sourced) text so it cannot inject HTML/script into
+    Anki note fields. Markdown emphasis characters are left intact, so this is
+    safe to apply *before* :func:`md_to_html_block` / :func:`md_to_html_inline`.
+    """
+    return _html.escape(text, quote=False)
 
 
 def heading_tag(title: str) -> str:

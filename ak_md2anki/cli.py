@@ -183,7 +183,7 @@ def cmd_list(args: argparse.Namespace) -> None:
     for c in sorted(cards, key=lambda x: x.id):
         e = "✨" if c.enriched else "  "
         print(
-            f"  [{c.type.value}]{e} {c.id:50s}  {c.fields.get('Term','') or c.fields.get('Question','')}"
+            f"  [{c.type.value}]{e} {c.id:50s}  {c.fields.get('Term', '') or c.fields.get('Question', '')}"
         )
     print(f"\n{len(cards)} cards")
 

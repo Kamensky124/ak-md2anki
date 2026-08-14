@@ -147,3 +147,18 @@ class TestExtractionFromString:
 
     def test_no_structure_text(self):
         assert extract_text("Just some prose.", source="prose") == []
+
+    def test_qa_continuation_paragraph_kept(self):
+        """A continuation paragraph (no '>' prefix) stays part of the answer."""
+        text = (
+            "## Section\n\n"
+            '### Q: "Multi?"\n'
+            "> First paragraph.\n\n"
+            "Second paragraph continuing the answer.\n\n"
+            "## Next\n"
+        )
+        cards = extract_text(text, source="inline://multi")
+        assert len(cards) == 1
+        answer = cards[0].fields["Answer"]
+        assert "First paragraph" in answer
+        assert "Second paragraph continuing" in answer

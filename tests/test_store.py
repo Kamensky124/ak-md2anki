@@ -1,5 +1,6 @@
 """Tests for cards.json store."""
 
+import json
 import tempfile
 from pathlib import Path
 
@@ -62,3 +63,13 @@ class TestStore:
             loaded = load(path)
             assert len(loaded) == 1
             assert loaded[0].fields["Term"] == "first"
+
+    def test_load_skips_malformed_card(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "cards.json"
+            good = _make_card("good").to_dict()
+            bad = {**good, "id": "x", "type": "not-a-real-type"}
+            path.write_text(json.dumps({"cards": [good, bad]}), encoding="utf-8")
+            loaded = load(path)
+            assert len(loaded) == 1
+            assert loaded[0].id == "good"

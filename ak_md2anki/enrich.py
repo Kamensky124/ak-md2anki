@@ -17,6 +17,7 @@ from pathlib import Path
 import requests
 
 from ak_md2anki import config
+from ak_md2anki.mdutil import sanitize_for_html
 from ak_md2anki.models import Card, CardType
 
 logger = logging.getLogger(__name__)
@@ -59,9 +60,10 @@ def _load_cache(path: Path) -> dict:
     if not path.exists():
         return {}
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return {}
+    return data if isinstance(data, dict) else {}
 
 
 def _save_cache(path: Path, data: dict) -> None:
@@ -93,7 +95,8 @@ def _call_openrouter(messages: list[dict], model: str, retries: int = 2) -> dict
                 timeout=60,
             )
             resp.raise_for_status()
-            return resp.json()
+            data: dict = resp.json()
+            return data
         except requests.RequestException as err:
             logger.warning(
                 "OpenRouter call failed (attempt %d/%d): %s", attempt + 1, retries + 1, err
@@ -129,6 +132,21 @@ def _extract_json(response: dict | None) -> list[dict] | None:
         return None
 
 
+def _call_with_fallback(messages: list[dict]) -> list[dict] | None:
+    """Call the default model; if it yields nothing parseable, try the fallback."""
+    parsed = _extract_json(_call_openrouter(messages, config.DEFAULT_MODEL))
+    if parsed is None:
+        logger.info("Default model returned nothing; trying fallback %s", config.FALLBACK_MODEL)
+        parsed = _extract_json(_call_openrouter(messages, config.FALLBACK_MODEL))
+    return parsed
+
+
+def _join_field(items: list[str]) -> str:
+    """Join LLM-sourced strings with ``<br>``, HTML-escaping each so untrusted
+    model output cannot inject markup/script into Anki note fields."""
+    return "<br>".join(sanitize_for_html(x) for x in items)
+
+
 def enrich(
     cards: list[Card],
     *,
@@ -152,7 +170,6 @@ def enrich(
     qa_cards = [c for c in cards if c.type == CardType.QA]
 
     # --- Vocab enrichment ---
-    model = config.DEFAULT_MODEL
     batch_size = config.ENRICH_BATCH_SIZE
     vocab_needed: list[Card] = []
     for c in vocab_terms:
@@ -160,7 +177,7 @@ def enrich(
         if cache_enabled and cache_key in cache.get("vocab", {}):
             examples = cache["vocab"][cache_key]
             if isinstance(examples, list) and examples:
-                c.fields["AIExamples"] = "<br>".join(examples)
+                c.fields["AIExamples"] = _join_field(examples)
                 c.enriched = True
                 continue
         vocab_needed.append(c)
@@ -172,8 +189,7 @@ def enrich(
             {"role": "system", "content": _VOCAB_PROMPT},
             {"role": "user", "content": "\n".join(terms)},
         ]
-        result = _call_openrouter(messages, model)
-        parsed = _extract_json(result)
+        parsed = _call_with_fallback(messages)
         if parsed is not None:
             for item in parsed:
                 term = item.get("term", "")
@@ -182,31 +198,12 @@ def enrich(
                     norm_term = _normalize_text(term)
                     for c in batch:
                         if _normalize_text(c.fields.get("Term", "")) == norm_term:
-                            c.fields["AIExamples"] = "<br>".join(examples)
+                            c.fields["AIExamples"] = _join_field(examples)
                             c.enriched = True
                             if cache_enabled:
                                 cache.setdefault("vocab", {})[c.id] = examples
                                 cache_dirty = True
                             break
-        else:
-            # Try fallback model once.
-            logger.info("Trying fallback model %s", config.FALLBACK_MODEL)
-            result = _call_openrouter(messages, config.FALLBACK_MODEL)
-            parsed = _extract_json(result)
-            if parsed is not None:
-                for item in parsed:
-                    term = item.get("term", "")
-                    examples = list(item.get("examples", []) or [])
-                    if term and examples:
-                        norm_term = _normalize_text(term)
-                        for c in batch:
-                            if _normalize_text(c.fields.get("Term", "")) == norm_term:
-                                c.fields["AIExamples"] = "<br>".join(examples)
-                                c.enriched = True
-                                if cache_enabled:
-                                    cache.setdefault("vocab", {})[c.id] = examples
-                                    cache_dirty = True
-                                break
 
         if batch_start + batch_size < len(vocab_needed):
             time.sleep(60 / config.RPM_LIMIT)
@@ -218,7 +215,7 @@ def enrich(
         if cache_enabled and cache_key in cache.get("qa", {}):
             variants = cache["qa"][cache_key]
             if isinstance(variants, list) and variants:
-                c.fields["Variants"] = "<br>".join(variants)
+                c.fields["Variants"] = _join_field(variants)
                 c.enriched = True
                 continue
         qa_needed.append(c)
@@ -234,8 +231,7 @@ def enrich(
             {"role": "system", "content": _QA_PROMPT},
             {"role": "user", "content": "\n\n".join(lines)},
         ]
-        result = _call_openrouter(messages, model)
-        parsed = _extract_json(result)
+        parsed = _call_with_fallback(messages)
         if parsed is not None:
             for item in parsed:
                 question = item.get("question", "")
@@ -244,7 +240,7 @@ def enrich(
                     norm_q = _normalize_text(question)
                     for c in batch:
                         if _normalize_text(c.fields.get("Question", "")) == norm_q:
-                            c.fields["Variants"] = "<br>".join(variants)
+                            c.fields["Variants"] = _join_field(variants)
                             c.enriched = True
                             if cache_enabled:
                                 cache.setdefault("qa", {})[c.id] = variants

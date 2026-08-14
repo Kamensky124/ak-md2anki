@@ -31,7 +31,7 @@ from ak_md2anki.mdutil import (
 from ak_md2anki.models import Card, CardType
 
 _HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
-_Q_HEADING = re.compile(r'^#{1,6}\s+Q\s*:\s*(.+?)\s*$', re.IGNORECASE)
+_Q_HEADING = re.compile(r"^#{1,6}\s+Q\s*:\s*(.+?)\s*$", re.IGNORECASE)
 _TABLE_ROW = re.compile(r"^\s*\|.*\|\s*$")
 _TABLE_SEP = re.compile(r"^\s*\|?\s*:?-{3,}.*$")
 _LEADIN = re.compile(r"^\s*\*[^*\n]+\*\s*$")
@@ -94,8 +94,13 @@ def _read_table(lines: list[str], start: int) -> tuple[list[str], int]:
 
 
 def _parse_table(
-    block: list[str], *, source_stem: str, source: str, source_hash: str,
-    category_tag: str, base_tags: list[str],
+    block: list[str],
+    *,
+    source_stem: str,
+    source: str,
+    source_hash: str,
+    category_tag: str,
+    base_tags: list[str],
 ) -> list[Card]:
     if len(block) < 2:  # need header + separator + >=1 row
         return []
@@ -145,9 +150,20 @@ def _parse_table(
 
 
 def _read_qa(
-    lines: list[str], start: int, *, section: str,
+    lines: list[str],
+    start: int,
+    *,
+    section: str,
 ) -> tuple[str, str, int]:
-    """Read one Q&A block. Returns (question, answer_markdown, next_index)."""
+    """Read one Q&A block. Returns (question, answer_markdown, next_index).
+
+    An optional ``*italic lead-in*`` line may precede the answer. The answer
+    itself starts as a blockquote (``>``-prefixed); once it has started,
+    continuation lines — including further paragraphs that omit the ``>``
+    prefix — are kept as part of the answer until a heading or a table ends
+    the block. Blank lines between paragraphs are preserved so Markdown renders
+    separate ``<p>`` blocks.
+    """
     m = _Q_HEADING.match(lines[start])
     if m is None:
         return "", "", start + 1  # not actually a Q heading — skip
@@ -155,37 +171,52 @@ def _read_qa(
 
     leadin = ""
     body: list[str] = []
+    in_answer = False
     j = start + 1
     while j < len(lines):
         line = lines[j]
         if _HEADING.match(line):  # next heading ends the block
             break
-        if line.strip() == "":
-            j += 1
-            continue
         if _TABLE_ROW.match(line):  # a table is not part of an answer
             break
-        mlead = _LEADIN.match(line)
-        if mlead and not body:
-            leadin = line.strip()
-            j += 1
-            continue
+        if not in_answer:
+            if line.strip() == "":
+                j += 1
+                continue
+            mlead = _LEADIN.match(line)
+            if mlead:
+                leadin = line.strip()
+                j += 1
+                continue
+            if line.lstrip().startswith(">"):
+                in_answer = True
+                body.append(line.lstrip()[1:].lstrip())
+                j += 1
+                continue
+            # A non-quote line before any blockquote ends the (empty) answer.
+            break
+        # in_answer: accumulate the body until a heading/table ends it.
         if line.lstrip().startswith(">"):
             body.append(line.lstrip()[1:].lstrip())
-            j += 1
-            continue
-        # A non-quote, non-heading, non-italic, non-blank line ends the answer.
-        break
+        else:
+            body.append(line.rstrip())
+        j += 1
 
-    answer_md = "\n".join(b for b in body if b is not None).strip()
+    answer_md = "\n".join(body).strip()
     if leadin:
         answer_md = f"{leadin}\n\n{answer_md}" if answer_md else leadin
     return question, answer_md, j
 
 
 def _parse_qa(
-    question: str, answer_md: str, *, source_stem: str, source: str,
-    source_hash: str, section: str, base_tags: list[str],
+    question: str,
+    answer_md: str,
+    *,
+    source_stem: str,
+    source: str,
+    source_hash: str,
+    section: str,
+    base_tags: list[str],
 ) -> Card | None:
     if not answer_md.strip():
         return None
@@ -255,9 +286,7 @@ def extract_text(text: str, *, source: str = "") -> list[Card]:
         if _TABLE_ROW.match(line) and i + 1 < n and _is_separator(lines[i + 1]):
             # Only treat as a vocab table if the header looks like a Term table.
             header_cells = _split_row(line)
-            looks_like_terms = any(
-                "term" in c.lower() for c in header_cells if c.strip()
-            )
+            looks_like_terms = any("term" in c.lower() for c in header_cells if c.strip())
             block, j = _read_table(lines, i)
             if looks_like_terms:
                 cards.extend(

@@ -24,10 +24,11 @@ logger = logging.getLogger(__name__)
 
 # ── low-level AnkiConnect call ──────────────────────────────────────────────
 
+
 def _invoke(action: str, **params: Any) -> Any:
     """Call AnkiConnect; raises on HTTP/result errors."""
     url = config.ANKI_CONNECT_URL
-    payload = {"action": action, "version": 6}
+    payload: dict[str, Any] = {"action": action, "version": 6}
     if params:
         payload["params"] = params
     try:
@@ -45,7 +46,8 @@ def _invoke(action: str, **params: Any) -> Any:
 
 def _multi(actions: list[dict]) -> list[Any]:
     """Batch multiple actions; returns list of results in the same order."""
-    return _invoke("multi", actions=actions)
+    result: list[Any] = _invoke("multi", actions=actions)
+    return result
 
 
 # ── deck & model setup ──────────────────────────────────────────────────────
@@ -81,6 +83,7 @@ def _ensure_deck(name: str) -> None:
 
 
 # ── sync ────────────────────────────────────────────────────────────────────
+
 
 def sync_cards(cards: list[Card], dry_run: bool = False) -> dict[str, int]:
     """Upsert cards into Anki via AnkiConnect.
@@ -137,7 +140,10 @@ def sync_cards(cards: list[Card], dry_run: bool = False) -> dict[str, int]:
                 updated += 1
                 continue
             multi_actions.append(
-                {"action": "updateNoteFields", "params": {"note": {"id": note_id, "fields": fields}}}
+                {
+                    "action": "updateNoteFields",
+                    "params": {"note": {"id": note_id, "fields": fields}},
+                }
             )
             updated += 1
         else:

@@ -34,10 +34,10 @@ def test_prose_extractor_mocked(monkeypatch):
                 {
                     "message": {
                         "content": (
-                            '['
+                            "["
                             '{"type": "vocab", "term": "API", "meaning": "Application Programming Interface", "why": "", "example": ""},'
                             '{"type": "qa", "section": "Tech", "question": "What is REST?", "answer": "Representational State Transfer"}'
-                            ']'
+                            "]"
                         )
                     }
                 }
@@ -77,3 +77,29 @@ def test_prose_respects_rpm_between_chunks(monkeypatch):
     assert cards == []
     # 3 chunks → 2 inter-chunk sleeps (none after the last).
     assert len(sleeps) == 2
+
+
+def test_prose_escapes_html_in_llm_fields(monkeypatch):
+    """Untrusted LLM output in prose fields must be HTML-escaped."""
+    import ak_md2anki.extract.prose as mod
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-fake")
+    monkeypatch.setattr(
+        mod,
+        "_call_openrouter",
+        lambda messages, model: {
+            "choices": [
+                {
+                    "message": {
+                        "content": '[{"type":"vocab","term":"API",'
+                        '"meaning":"<script>x</script>","why":"","example":""}]'
+                    }
+                }
+            ]
+        },
+    )
+    cards = extract_prose("## Tech\nAPI.", source="t.md")
+    assert len(cards) == 1
+    meaning = cards[0].fields["Meaning"]
+    assert "<script>" not in meaning
+    assert "&lt;script&gt;" in meaning
