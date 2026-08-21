@@ -60,7 +60,11 @@ class TestEnrichWithMock:
         def fake_call(messages, model):
             if return_value is not None:
                 return return_value
-            return {"choices": [{"message": {"content": '[{"term":"retainer","examples":["ex1","ex2"]}]'}}]}
+            return {
+                "choices": [
+                    {"message": {"content": '[{"term":"retainer","examples":["ex1","ex2"]}]'}}
+                ]
+            }
 
         monkeypatch.setattr(mod, "_call_openrouter", fake_call)
 
@@ -87,11 +91,7 @@ class TestEnrichWithMock:
         def fake_call(messages, model):
             return {
                 "choices": [
-                    {
-                        "message": {
-                            "content": '[{"question":"What is X?","variants":["v1","v2"]}]'
-                        }
-                    }
+                    {"message": {"content": '[{"question":"What is X?","variants":["v1","v2"]}]'}}
                 ]
             }
 
@@ -110,7 +110,11 @@ class TestEnrichWithMock:
 
         def fake_call(messages, model):
             call_count[0] += 1
-            return {"choices": [{"message": {"content": '[{"term":"retainer","examples":["c1","c2"]}]'}}]}
+            return {
+                "choices": [
+                    {"message": {"content": '[{"term":"retainer","examples":["c1","c2"]}]'}}
+                ]
+            }
 
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-fake")
         monkeypatch.setattr(mod, "_call_openrouter", fake_call)
